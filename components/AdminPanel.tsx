@@ -25,10 +25,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ orders, isLocked, onToggleLock,
           <button 
             onClick={onToggleLock}
             className={`btn-cute px-6 py-2.5 rounded-full font-bold text-white text-xs shadow-md transition-all ${
-              isLocked ? 'bg-rose-400' : 'bg-emerald-400'
+              isLocked ? 'bg-emerald-400' : 'bg-rose-400'
             }`}
           >
-            {isLocked ? '🔒 ปิดรับคิว' : '🔓 เปิดรับคิว'}
+            {isLocked ? '🔓 เปิดรับคิว' : '🔒 ปิดรับคิว'}
           </button>
           <button 
             onClick={onLogout}

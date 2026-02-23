@@ -19,6 +19,7 @@ const App: React.FC = () => {
   const [showRecommendation, setShowRecommendation] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showReadyModal, setShowReadyModal] = useState(false);
+  const [isWsConnected, setIsWsConnected] = useState(false);
   
   // Admin Authentication & Notifications
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
@@ -43,8 +44,14 @@ const App: React.FC = () => {
     const socket = new WebSocket(`${protocol}//${window.location.host}`);
     ws.current = socket;
 
+    socket.onopen = () => {
+      setIsWsConnected(true);
+      console.log('WebSocket connected');
+    };
+
     socket.onmessage = (event) => {
       const { type, payload } = JSON.parse(event.data);
+      console.log('WS Message:', type, payload);
       switch (type) {
         case 'INIT':
           setOrders(payload.orders);
@@ -52,7 +59,11 @@ const App: React.FC = () => {
           prevOrdersCount.current = payload.orders.length;
           break;
         case 'ORDER_CREATED':
-          setOrders(prev => [...prev, payload]);
+          setOrders(prev => {
+            // Avoid duplicates
+            if (prev.find(o => o.id === payload.id)) return prev;
+            return [...prev, payload];
+          });
           break;
         case 'ORDER_UPDATED':
           setOrders(prev => prev.map(o => o.id === payload.orderId ? { ...o, status: payload.status } : o));
@@ -64,8 +75,8 @@ const App: React.FC = () => {
     };
 
     socket.onclose = () => {
+      setIsWsConnected(false);
       console.log('WebSocket disconnected, retrying...');
-      // Simple retry logic could be added here
     };
 
     const savedMyOrder = localStorage.getItem('pkw_my_order_v5');
@@ -134,6 +145,10 @@ const App: React.FC = () => {
   }, [orders, myOrder, currentView]);
 
   const addToCart = (item: MenuItem, quantity: number) => {
+    if (isQueueLocked) {
+      alert("ขออภัย ขณะนี้ร้านปิดรับคิวชั่วคราว ไม่สามารถเพิ่มสินค้าได้ค่ะ");
+      return;
+    }
     setCart(prev => {
       const existing = prev.find(i => i.id === item.id);
       if (existing) {
@@ -233,7 +248,10 @@ const App: React.FC = () => {
             className="flex items-center space-x-3 cursor-pointer"
             onClick={() => setCurrentView('MENU')}
           >
-            <div className="w-10 h-10 bg-sky-400 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-md">พ</div>
+            <div className="w-10 h-10 bg-sky-400 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-md relative">
+              พ
+              <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${isWsConnected ? 'bg-emerald-400' : 'bg-rose-400 animate-pulse'}`}></div>
+            </div>
             <div>
               <h1 className="text-xl font-mali font-bold text-sky-600 leading-tight">{SHOP_NAME}</h1>
               <p className="text-[10px] text-sky-400 font-bold uppercase tracking-widest">{SHOP_SUBTITLE}</p>
@@ -274,6 +292,13 @@ const App: React.FC = () => {
             </div>
 
             {/* Category Navigation */}
+            {isQueueLocked && (
+              <div className="bg-rose-50 border-2 border-rose-100 p-4 rounded-[2rem] text-center animate-bounce-slow">
+                <p className="text-rose-500 font-mali font-bold text-lg">🔒 ขณะนี้ร้านปิดรับคิวชั่วคราวค่ะ</p>
+                <p className="text-rose-400 text-xs font-bold">ขออภัยในความไม่สะดวกนะคะ แวะมาใหม่ภายหลังน้า ✨</p>
+              </div>
+            )}
+
             <div className="bg-white/50 backdrop-blur-sm p-3 rounded-3xl border border-sky-100 flex justify-center gap-2 overflow-x-auto no-scrollbar py-4 shadow-sm">
               {['เครื่องดื่มร้อน', 'เครื่องดื่มเย็น', 'ของทานเล่น'].map(cat => (
                 <button 
@@ -295,7 +320,7 @@ const App: React.FC = () => {
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
                     {MENU_ITEMS.filter(item => item.category === cat).map(item => (
-                      <MenuCard key={item.id} item={item} onAdd={addToCart} />
+                      <MenuCard key={item.id} item={item} onAdd={addToCart} isLocked={isQueueLocked} />
                     ))}
                   </div>
                 </section>

@@ -5,9 +5,10 @@ import { MenuItem } from '../types';
 interface MenuCardProps {
   item: MenuItem;
   onAdd: (item: MenuItem, quantity: number) => void;
+  isLocked?: boolean;
 }
 
-const MenuCard: React.FC<MenuCardProps> = ({ item, onAdd }) => {
+const MenuCard: React.FC<MenuCardProps> = ({ item, onAdd, isLocked }) => {
   const [qty, setQty] = useState(1);
 
   const handleAdd = () => {
@@ -54,9 +55,14 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onAdd }) => {
           
           <button 
             onClick={handleAdd}
-            className="w-full bg-sky-500 text-white py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-sky-600 transition-all shadow-[0_4px_0px_#0369a1] active:translate-y-1 active:shadow-none"
+            disabled={isLocked}
+            className={`w-full py-3 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all ${
+              isLocked 
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' 
+                : 'bg-sky-500 text-white hover:bg-sky-600 shadow-[0_4px_0px_#0369a1] active:translate-y-1 active:shadow-none'
+            }`}
           >
-            เพิ่มลงตะกร้า
+            {isLocked ? 'ปิดรับคิว' : 'เพิ่มลงตะกร้า'}
           </button>
         </div>
       </div>

@@ -27,6 +27,7 @@ const App: React.FC = () => {
   const [showNewOrderToast, setShowNewOrderToast] = useState(false);
   const prevOrdersCount = useRef<number>(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const ws = useRef<WebSocket | null>(null);
 
   // Refs for scrolling to categories
   const categoryRefs: Record<string, React.RefObject<HTMLElement | null>> = {
@@ -35,14 +36,37 @@ const App: React.FC = () => {
     'ของทานเล่น': useRef<HTMLElement>(null),
   };
 
-  // Initial Load
+  // Initial Load & WebSocket Setup
   useEffect(() => {
-    const savedOrders = localStorage.getItem('pkw_orders_v5');
-    if (savedOrders) {
-      const parsed = JSON.parse(savedOrders);
-      setOrders(parsed);
-      prevOrdersCount.current = parsed.length;
-    }
+    // WebSocket Connection
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const socket = new WebSocket(`${protocol}//${window.location.host}`);
+    ws.current = socket;
+
+    socket.onmessage = (event) => {
+      const { type, payload } = JSON.parse(event.data);
+      switch (type) {
+        case 'INIT':
+          setOrders(payload.orders);
+          setIsQueueLocked(payload.isQueueLocked);
+          prevOrdersCount.current = payload.orders.length;
+          break;
+        case 'ORDER_CREATED':
+          setOrders(prev => [...prev, payload]);
+          break;
+        case 'ORDER_UPDATED':
+          setOrders(prev => prev.map(o => o.id === payload.orderId ? { ...o, status: payload.status } : o));
+          break;
+        case 'LOCK_UPDATED':
+          setIsQueueLocked(payload);
+          break;
+      }
+    };
+
+    socket.onclose = () => {
+      console.log('WebSocket disconnected, retrying...');
+      // Simple retry logic could be added here
+    };
 
     const savedMyOrder = localStorage.getItem('pkw_my_order_v5');
     if (savedMyOrder) setMyOrder(JSON.parse(savedMyOrder));
@@ -53,12 +77,11 @@ const App: React.FC = () => {
 
     // Prepare notification sound
     audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-  }, []);
 
-  // Save Orders
-  useEffect(() => {
-    localStorage.setItem('pkw_orders_v5', JSON.stringify(orders));
-  }, [orders]);
+    return () => {
+      socket.close();
+    };
+  }, []);
 
   // Admin New Order Monitor
   useEffect(() => {
@@ -146,7 +169,12 @@ const App: React.FC = () => {
       phoneNumber,
       paymentSlip: slipBase64
     };
-    setOrders(prev => [...prev, newOrder]);
+
+    // Send to server via WebSocket
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: 'CREATE_ORDER', payload: newOrder }));
+    }
+
     setMyOrder(newOrder);
     setCart([]);
     setShowSuccessModal(true);
@@ -158,7 +186,26 @@ const App: React.FC = () => {
   };
 
   const updateOrderStatus = (orderId: string, newStatus: OrderStatus) => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: 'UPDATE_ORDER_STATUS', payload: { orderId, status: newStatus } }));
+    }
+  };
+
+  const toggleQueueLock = () => {
+    const newLockState = !isQueueLocked;
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: 'TOGGLE_LOCK', payload: newLockState }));
+    }
+  };
+
+  const scrollToCategory = (cat: string) => {
+    const ref = categoryRefs[cat];
+    if (ref && ref.current) {
+      window.scrollTo({
+        top: ref.current.offsetTop - 120, // Adjusted offset for layout
+        behavior: 'smooth'
+      });
+    }
   };
 
   const handleAdminAuth = () => {
@@ -176,16 +223,6 @@ const App: React.FC = () => {
     setAdminInput('');
     setShowLogoutToast(true);
     setTimeout(() => setShowLogoutToast(false), 3000);
-  };
-
-  const scrollToCategory = (cat: string) => {
-    const ref = categoryRefs[cat];
-    if (ref && ref.current) {
-      window.scrollTo({
-        top: ref.current.offsetTop - 120, // Adjusted offset for layout
-        behavior: 'smooth'
-      });
-    }
   };
 
   return (
@@ -332,7 +369,7 @@ const App: React.FC = () => {
               <AdminPanel 
                 orders={orders} 
                 isLocked={isQueueLocked} 
-                onToggleLock={() => setIsQueueLocked(!isQueueLocked)}
+                onToggleLock={toggleQueueLock}
                 onUpdateStatus={updateOrderStatus}
                 onLogout={handleLogout}
               />
